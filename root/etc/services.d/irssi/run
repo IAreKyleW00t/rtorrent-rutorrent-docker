@@ -1,0 +1,15 @@
+#!/usr/bin/with-contenv bash
+
+_term() {
+  echo "[irssi] Caught SIGTERM signal!"
+  killall -TERM irssi 2>/dev/null
+}
+
+trap _term SIGTERM
+
+HOME=/home/abc screen -D -m -S \
+  irssi s6-setuidgid abc /usr/bin/irssi \
+    --home=/home/abc/.irssi \
+    --config=/config/autodl-irssi/irssi.cfg &
+
+wait

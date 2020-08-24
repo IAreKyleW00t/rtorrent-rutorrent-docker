@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Basic healthcheck script
+
+# Exit if any checks fail
+set -e
+
+# Useful for testing, optionally give the container a chance to be ready
+if [[ "${1:-false}" = "--wait" ]]; then
+    echo "[healthcheck] Gracefully waiting for container to be healthy..."
+    TIMEOUT=${2:-180} # Defaults to 3 minute timeout
+    while ! /healthcheck ; do
+        # Container is taking too long, give up
+        [[ "${TIMEOUT}" -eq 0 ]] && exit 1
+
+        # Wait and try again
+        sleep 1; (( TIMEOUT-- ))
+    done
+    echo "[healthcheck] Ready!"
+fi
+
+# Check running processes
+pgrep nginx >/dev/null
+pgrep rtorrent >/dev/null
+pgrep irssi >/dev/null
+
+# Check nginx
+curl --fail -k -sSL https://localhost | grep -q "r[Tt]orrent"

@@ -1,0 +1,6 @@
+# VSCode
+.vscode/
+
+# Container volumes
+/config
+/data

@@ -1,0 +1,130 @@
+FROM lsiobase/nginx:3.12
+
+# Package versions
+ARG RUTORRENT_VERSION="v3.10"
+ARG AUTODL_IRSSI_VERSION="2.6.2"
+ARG AUTODL_TRACKER_VERSION="v284"
+ARG AUTODL_PLUGIN_VERSION="v2.3.0"
+ARG QUICKBOX_VERSION="master"
+
+# Performance options
+ARG BUILD_CORES="1"
+
+# Copy patch files
+COPY patches/ /tmp/patches/
+
+RUN set -x && \
+ export MAKEFLAGS="-j${BUILD_CORES}" && \
+ apk add --no-cache --upgrade --virtual=build-dependencies \
+    build-base \
+    bzip2-dev \
+    libffi-dev \
+    libtool \
+    openssl-dev \
+    perl-dev \
+    python3-dev \
+    zlib-dev && \
+ apk add --no-cache --upgrade \
+    bind-tools \
+    bzip2 \
+    curl \
+    fcgi \
+    ffmpeg \
+    geoip \
+    gettext \
+    gzip \
+    irssi \
+    irssi-perl \
+    libffi \
+    mediainfo \
+    openssl \
+    perl \
+    perl-archive-zip \
+    perl-net-ssleay \
+    perl-digest-sha1 \
+    php7 \
+    php7-cgi \
+    php7-curl \
+    php7-pear \
+    php7-sockets \
+    php7-zip \
+    procps \
+    py3-pip \
+    python3 \
+    rtorrent \
+    screen \
+    sox \
+    tar \
+    unrar \
+    wget \
+    zip \
+    zlib && \
+ pip3 install --no-cache-dir -U \
+    cfscrape \
+    cloudscraper && \
+ curl \
+    -o /tmp/autodl-irssi.tar.gz \
+    -L "https://github.com/autodl-community/autodl-irssi/archive/${AUTODL_IRSSI_VERSION}.tar.gz" && \
+ mkdir -pv /home/abc/.irssi/scripts/autorun /home/abc/.autodl && \
+ tar xvf /tmp/autodl-irssi.tar.gz \
+    -C /home/abc/.irssi/scripts \
+    --strip-components=1 && \
+ cp -v /home/abc/.irssi/scripts/autodl-irssi.pl /home/abc/.irssi/scripts/autorun/ && \
+ echo "load perl" > /home/abc/.irssi/startup && \
+ curl \
+    -o /tmp/autodl-trackers.tar.gz \
+    -L "https://github.com/autodl-community/autodl-trackers/archive/${AUTODL_TRACKER_VERSION}.tar.gz" && \
+ mkdir -pv /home/abc/.irssi/scripts/AutodlIrssi/trackers && \
+ tar xvf /tmp/autodl-trackers.tar.gz \
+    -C /home/abc/.irssi/scripts/AutodlIrssi/trackers \
+    --strip-components=1 && \
+ chown -R abc:abc /home/abc && \
+ curl -fsSL --compressed https://git.io/cpm > /usr/local/bin/cpm && \
+ chmod +x /usr/local/bin/cpm && \
+ /usr/local/bin/cpm install --verbose --global --no-test --without-test \
+   Archive::Zip Net::SSLeay HTML::Entities XML::LibXML Digest::SHA JSON JSON::XS && \
+ curl \
+    -o /tmp/rutorrent.tar.gz \
+    -L "https://github.com/Novik/rutorrent/archive/${RUTORRENT_VERSION}.tar.gz" && \
+ mkdir -pv \
+    /app/rutorrent \
+    /defaults/rutorrent-conf && \
+ tar xvf /tmp/rutorrent.tar.gz \
+    -C /app/rutorrent \
+    --strip-components=1 && \
+ mv -v /app/rutorrent/conf/* /defaults/rutorrent-conf/ && \
+ rm -rf /defaults/rutorrent-conf/users && \
+ curl \
+   -o /tmp/autodl-rutorrent.tar.gz \
+   -L "https://github.com/autodl-community/autodl-rutorrent/archive/${AUTODL_PLUGIN_VERSION}.tar.gz" && \
+ mkdir -pv /app/rutorrent/plugins/autodl-irssi && \
+ tar xvf /tmp/autodl-rutorrent.tar.gz \
+    -C /app/rutorrent/plugins/autodl-irssi \
+    --strip-components=1 && \
+ curl \
+   -o /tmp/rutorrent-quickbox.tar.gz \
+   -L "https://github.com/QuickBox/club-QuickBox/archive/${QUICKBOX_VERSION}.tar.gz" && \
+ mkdir -pv /app/rutorrent/plugins/theme/themes/club-QuickBox && \
+ tar xvf /tmp/rutorrent-quickbox.tar.gz \
+    -C /app/rutorrent/plugins/theme/themes/club-QuickBox \
+    --strip-components=1 && \
+ cd /app/rutorrent/php && \
+ patch < /tmp/patches/snoopy.patch && \
+ apk del --purge \
+    build-dependencies && \
+ rm -rfv \
+    /etc/nginx/conf.d/default.conf \
+    /root/.cache \
+    /tmp/*
+
+# Add local files
+COPY root/ /
+
+# Expose ports and volumes
+EXPOSE 80 443 49160 51415
+VOLUME /config /downloads
+
+# ENTRYPOINT, USER, and WORKDIR are all handled by linuxserver.io
+
+# An extremely simple healthcheck script
+HEALTHCHECK CMD /healthcheck

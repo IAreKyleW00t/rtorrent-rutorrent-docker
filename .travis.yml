@@ -1,0 +1,226 @@
+---
+# Base system settings
+language: minimal
+dist: focal
+os: linux
+arch: amd64
+
+# Global environment variables used in all Stages/Jobs
+env:
+  global:
+    - BUILD_DATE="$(date -Is)"
+    - BUILD_CORES="$(nproc)"
+    - REPO_URL="https://github.com/${TRAVIS_REPO_SLUG}"
+    - MAINTAINER="Kyle Colantonio (IAreKyleW00t) <k@yle.sh>"
+    - IMAGE_VERSION="${TRAVIS_BUILD_NUMBER}"
+    - IMAGE_NAME="$(echo ${TRAVIS_REPO_SLUG,,} | sed -e 's/-docker//g')"
+    - IMAGE_TAG="$(echo ${TRAVIS_BRANCH} | sed -e 's/master/latest/g')"
+    - DOCKER_CLI_EXPERIMENTAL=enabled
+
+# Enable Docker service in Travis VM
+services:
+  - docker
+
+# We really only need the repo during the build process,
+# to save some time we can skip that step by default.
+git:
+  clone: false
+
+# All shared jobs must come before the "jobs" key
+
+##
+# Shared Build job
+##
+_build_image: &build_image
+  git:
+    depth: false # Only pull most recent commit
+    clone: true
+
+  script:
+    - >
+      docker build --no-cache --pull \
+        --label "travis.build=${TRAVIS_BUILD_NUMBER}" \
+        --label "travis.build_id=${TRAVIS_BUILD_ID}" \
+        --label "travis.build_url=${TRAVIS_BUILD_WEB_URL}" \
+        --label "travis.job=${TRAVIS_JOB_NUMBER}" \
+        --label "travis.job_id=${TRAVIS_JOB_ID}" \
+        --label "travis.job_url=${TRAVIS_JOB_WEB_URL}" \
+        --label "git.branch=${TRAVIS_BRANCH}" \
+        --label "git.commit=${TRAVIS_COMMIT}" \
+        --label "git.repo=${TRAVIS_REPO_SLUG}" \
+        --label "git.repo_url=${REPO_URL}" \
+        --label "maintainer=${MAINTAINER}" \
+        --label "build_date=${BUILD_DATE}" \
+        --label "version=${IMAGE_VERSION}" \
+        --label "name=${IMAGE_NAME##*/}" \
+        --build-arg "BUILD_CORES=${BUILD_CORES}" \
+        -t "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_VERSION}" \
+        -f "$DOCKER_FILE" .
+
+    # Save the newly build image to TAR for later stages. Normally it would be
+    # good to use GZip as well, but Travis does that automatically for workspaces.
+    - docker save "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_VERSION}" > "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+
+##
+# Shared Test job
+##
+_test_image: &test_image
+  script:
+    - docker load < "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+
+    # Run the healthcheck script as a very basic smoke test
+    - >
+      docker run --rm -p 8443:443 \
+        --name "${BUILD_ARCH}-${IMAGE_NAME##*/}-test" \
+        "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_VERSION}" \
+        /healthcheck --wait
+
+##
+# SHARED Deploy job
+##
+_deploy_image: &deploy_image
+  script:
+    - docker load < "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+    # Retag the version-specific image to the "tagged" version
+    - docker tag "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_VERSION}" "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_TAG}"
+
+    # Push both of them to DockerHub
+    - docker push "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_VERSION}"
+    - docker push "${IMAGE_NAME}:${BUILD_ARCH}-${IMAGE_TAG}"
+
+# Instead of using 'env' to build a job matrix, we manually define it here
+# so the last Manifest stage isn't duplicated for each architecutre.
+# Yes, that is the only reason I went through this effort.
+#
+# Travis cannot handle Environment variables in workspaces (well, it does,
+# but the archive it makes does not for some reason). A workaround is to
+# statically define all the workspaces in the jobs themselves.
+jobs:
+  include:
+    ##
+    # Build stage
+    ##
+    - stage: Build
+      name: Build amd64
+      env: BUILD_ARCH=amd64 DOCKER_FILE=Dockerfile
+      <<: *build_image
+      workspaces:
+        create:
+          name: amd64-docker-image
+          paths:
+            - "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+
+    - name: Build aarch64
+      arch: arm64
+      env: BUILD_ARCH=arm64v8 DOCKER_FILE=Dockerfile.aarch64
+      <<: *build_image
+      workspaces:
+        create:
+          name: arm64v8-docker-image
+          paths:
+            - "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+
+    - name: Build armhf
+      arch: arm64
+      env: BUILD_ARCH=arm32v7 DOCKER_FILE=Dockerfile.armhf
+      <<: *build_image
+      workspaces:
+        create:
+          name: arm32v7-docker-image
+          paths:
+            - "${HOME}/${IMAGE_NAME##*/}.${BUILD_ARCH}.docker.tar"
+
+    ##
+    # Test stage
+    ##
+    - stage: Test
+      name: Test amd64
+      env: BUILD_ARCH=amd64
+      <<: *test_image
+      workspaces:
+        use: amd64-docker-image
+
+    - name: Test aarch64
+      arch: arm64
+      env: BUILD_ARCH=arm64v8
+      <<: *test_image
+      workspaces:
+        use: arm64v8-docker-image
+
+    - name: Test armhf
+      arch: arm64
+      env: BUILD_ARCH=arm32v7
+      <<: *test_image
+      workspaces:
+        use: arm32v7-docker-image
+
+    ##
+    # Deploy stage
+    # We run all these on amd64 arch since it's _a little_ faster overall.
+    ##
+    - stage: Deploy
+      name: Deploy amd64
+      env: BUILD_ARCH=amd64
+      <<: *deploy_image
+      workspaces:
+        use: amd64-docker-image
+
+    - name: Deploy aarch64
+      env: BUILD_ARCH=arm64v8
+      <<: *deploy_image
+      workspaces:
+        use: arm64v8-docker-image
+
+    - name: Deploy armhf
+      env: BUILD_ARCH=arm32v7
+      <<: *deploy_image
+      workspaces:
+        use: arm32v7-docker-image
+
+    ##
+    # Finalizing stage
+    ##
+    - stage: Finalize
+      name: Create multi-arch manifests
+      script:
+        - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+        # Create a new version-specific and "tagged" manifest with all architectures
+        - >
+          docker manifest create "${IMAGE_NAME}:${IMAGE_VERSION}" \
+            "${IMAGE_NAME}:amd64-${IMAGE_VERSION}" \
+            "${IMAGE_NAME}:arm64v8-${IMAGE_VERSION}" \
+            "${IMAGE_NAME}:arm32v7-${IMAGE_VERSION}"
+        - >
+          docker manifest create "${IMAGE_NAME}:${IMAGE_TAG}" \
+            "${IMAGE_NAME}:amd64-${IMAGE_TAG}" \
+            "${IMAGE_NAME}:arm64v8-${IMAGE_TAG}" \
+            "${IMAGE_NAME}:arm32v7-${IMAGE_TAG}"
+
+        # Push both manifests to DockerHub (and delete them locally)
+        - docker manifest push --purge "${IMAGE_NAME}:${IMAGE_VERSION}"
+        - docker manifest push --purge "${IMAGE_NAME}:${IMAGE_TAG}"
+
+# Not supported with 2FA enabled on DockerHub, keeping as a placeholder
+#    - name: Update DockerHub README
+#      git:
+#        depth: false # Only pull most recent commit
+#        clone: true
+#      script:
+#        - >
+#          docker run --rm -v "${PWD}:/workspace" \
+#            -e "DOCKERHUB_USERNAME=${DOCKER_USERNAME}" \
+#            -e "DOCKERHUB_PASSWORD=${DOCKER_PASSWORD}" \
+#            -e "DOCKERHUB_REPOSITORY=${IMAGE_NAME}" \
+#            -e "README_FILEPATH=/workspace/README.md" \
+#            peterevans/dockerhub-description:latest
+
+# Ensure the order for the Stages above. Occasionally Travis will
+# randomly order these and that'll (obviously) cause bad results.
+stages:
+  - Build
+  - Test
+  - Deploy
+  - Finalize

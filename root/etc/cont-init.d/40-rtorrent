@@ -1,0 +1,69 @@
+#!/usr/bin/with-contenv bash
+
+# Make necessary folders
+mkdir -p \
+    /config/autodl-irssi \
+    /config{/log/rtorrent,/log/rutorrent,/rtorrent/rtorrent_sess,/rutorrent/settings/users} \
+    /config/rutorrent/profiles{/settings,/torrents,/users,/tmp} \
+    /run/php
+
+# Copy rTorrent config
+[[ ! -f /config/rtorrent/rtorrent.rc ]] && \
+    cp /defaults/rtorrent/rtorrent.rc /config/rtorrent/rtorrent.rc
+
+# Delete old lock files
+[[ -f /config/rtorrent/rtorrent_sess/rtorrent.lock ]] && \
+    rm -f /config/rtorrent/rtorrent_sess/rtorrent.lock
+
+# Copy ruTorrent config
+[[ ! -f /config/rutorrent/settings/config.php ]] && \
+    cp /defaults/rutorrent/config.php /config/rutorrent/settings/config.php
+cp /config/rutorrent/settings/config.php /app/rutorrent/conf/config.php
+
+# Copy autodl-irssi config
+[[ ! -f /config/autodl-irssi/irssi.cfg ]] && \
+    cp /defaults/irssi/irssi.cfg /config/autodl-irssi/irssi.cfg
+
+# Generate a random Password and Port for autodl-irssi
+# This is only used when copying default configs the first time
+export AUTODL_PASSWORD=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
+export AUTODL_PORT=$(perl -e 'print int(rand(65000-2000)) + 2000')
+
+# Copy autodl-irssi plugin config
+[[ ! -f /config/autodl-irssi/autodl.php ]] && \
+    envsubst '$AUTODL_PASSWORD $AUTODL_PORT' < /defaults/irssi/autodl.php > /config/autodl-irssi/autodl.php
+cp /config/autodl-irssi/autodl.php /app/rutorrent/plugins/autodl-irssi/conf.php
+
+# Copy and symlink autodl-rutorrent config
+[[ ! -f /config/autodl-irssi/autodl.cfg ]] && \
+    envsubst '$AUTODL_PASSWORD $AUTODL_PORT' < /defaults/irssi/autodl.cfg > /config/autodl-irssi/autodl.cfg
+[[ ! -L /home/abc/.autodl/autodl.cfg ]] && \
+    ln -sf /config/autodl-irssi/autodl.cfg /home/abc/.autodl/autodl.cfg
+
+# Clear unncessary vars now
+unset AUTODL_PASSWORD AUTODL_PORT
+
+# Copy example htpasswd file
+[[ ! -f /config/nginx/htpasswd.example ]] && \
+    cp  /defaults/htpasswd.example /config/nginx/htpasswd.example
+
+# Enable/Disable basic authentication
+if [[ -f /config/nginx/htpasswd ]]; then
+    echo "htpasswd present -- Basic Authentication enabled"
+    cp /config/nginx/htpasswd /app/rutorrent/.htpasswd
+    sed -Ei 's/^#?(\s+)auth_basic(.+)$/\1auth_basic\2/g' /config/nginx/site-confs/default
+else
+    echo "htpasswd not present -- Basic Authentication disabled"
+    sed -Ei 's/^#?(\s+)auth_basic(.+)$/#\1auth_basic\2/g' /config/nginx/site-confs/default
+fi
+
+# Fix/Update permissions
+chown abc:abc /downloads
+chown -R abc:abc \
+    /home/abc \
+    /config \
+    /run \
+    /app/rutorrent
+
+# Cleanup
+rm -rf /config/www

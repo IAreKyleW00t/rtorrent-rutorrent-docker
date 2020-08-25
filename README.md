@@ -2,7 +2,7 @@
 
 Available on [GitHub](https://github.com/IAreKyleW00t/rtorrent-rutorrent-docker) and [DockerHub](https://hub.docker.com/r/iarekylew00t/rtorrent-rutorrent)
 
-A small, simple, and lightweight Alpine-based Docker image built for `amd64`, `arm64`, and `arm`.
+A small, simple, and lightweight Alpine-based Docker image built for `amd64`, `arm64`, and `arm`. Automatically rebuilt weekly to ensure updates from [Linuxserver.io](https://linuxserver.io) flow downstream.
 
 ### Features
 

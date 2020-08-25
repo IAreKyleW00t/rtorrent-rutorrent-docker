@@ -49,11 +49,11 @@ unset AUTODL_PASSWORD AUTODL_PORT
 
 # Enable/Disable basic authentication
 if [[ -f /config/nginx/htpasswd ]]; then
-    echo "htpasswd present -- Basic Authentication enabled"
+    echo "[nginx] htpasswd present -- Basic Authentication enabled"
     cp /config/nginx/htpasswd /app/rutorrent/.htpasswd
     sed -Ei 's/^#?(\s+)auth_basic(.+)$/\1auth_basic\2/g' /config/nginx/site-confs/default
 else
-    echo "htpasswd not present -- Basic Authentication disabled"
+    echo "[nginx] htpasswd not present -- Basic Authentication disabled"
     sed -Ei 's/^#?(\s+)auth_basic(.+)$/#\1auth_basic\2/g' /config/nginx/site-confs/default
 fi
 

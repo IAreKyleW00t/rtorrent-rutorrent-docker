@@ -121,7 +121,7 @@ RUN set -x && \
 COPY root/ /
 
 # Expose ports and volumes
-EXPOSE 80 443 49160 51415
+EXPOSE 443 49160 51415
 VOLUME /config /downloads
 
 # ENTRYPOINT, USER, and WORKDIR are all handled by linuxserver.io

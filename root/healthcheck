@@ -20,8 +20,9 @@ fi
 
 # Check running processes
 pgrep nginx >/dev/null
+pgrep php-fpm >/dev/null
 pgrep rtorrent >/dev/null
 pgrep irssi >/dev/null
 
 # Check nginx
-curl --fail -k -sSL https://localhost | grep -q "r[Tt]orrent"
+curl --fail -k -sSL https://localhost/healthcheck >/dev/null

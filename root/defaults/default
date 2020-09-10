@@ -44,6 +44,11 @@ server {
     scgi_pass unix:/run/php/.rtorrent.sock;
   }
 
+  location /healthcheck {
+    auth_basic off;
+    return 200 "healthy";
+  }
+
   location ~ /\.ht {
     deny all;
   }

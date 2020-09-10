@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bash
+
+# Remove unnecessary files from base linuxserver.io image
+rm -rf /config/www

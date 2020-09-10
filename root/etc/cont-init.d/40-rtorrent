@@ -15,10 +15,16 @@ mkdir -p \
 [[ -f /config/rtorrent/rtorrent_sess/rtorrent.lock ]] && \
     rm -f /config/rtorrent/rtorrent_sess/rtorrent.lock
 
-# Copy ruTorrent config
+# Copy ruTorrent configs
 [[ ! -f /config/rutorrent/settings/config.php ]] && \
     cp /defaults/rutorrent/config.php /config/rutorrent/settings/config.php
 cp /config/rutorrent/settings/config.php /app/rutorrent/conf/config.php
+[[ ! -f /config/rutorrent/settings/access.ini ]] && \
+    cp /defaults/rutorrent/access.ini /config/rutorrent/settings/access.ini
+cp /config/rutorrent/settings/access.ini /app/rutorrent/conf/access.ini
+[[ ! -f /config/rutorrent/settings/plugins.ini ]] && \
+    cp /defaults/rutorrent/plugins.ini /config/rutorrent/settings/plugins.ini
+cp /config/rutorrent/settings/plugins.ini /app/rutorrent/conf/plugins.ini
 
 # Copy autodl-irssi config
 [[ ! -f /config/autodl-irssi/irssi.cfg ]] && \
@@ -64,6 +70,3 @@ chown -R abc:abc \
     /config \
     /run \
     /app/rutorrent
-
-# Cleanup
-rm -rf /config/www
